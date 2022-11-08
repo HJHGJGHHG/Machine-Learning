@@ -8,7 +8,7 @@ from tensorboardX import SummaryWriter
 
 
 def f(input):
-    return input[0] + input[1]
+    return input[0]**2 + input[1]**2
 
 
 class BaseNetwork(object):
@@ -70,16 +70,17 @@ class Sequence(BaseNetwork):
 
 
 class Variable(object):
-    def __init__(self, weight, wgrad, bias, bgrad, v_weight=None):
+    def __init__(self, weight, wgrad, bias, bgrad, v_weight=None, instances=0):
         self.weight = weight
         self.wgrad = wgrad
         self.v_weight = np.zeros(self.weight.shape) if v_weight is None else v_weight
         self.bias = bias
         self.bgrad = bgrad
+        self.instances = instances
     
     def save_param(self):
         # 参数保存
-        return self.weight, self.wgrad, self.v_weight, self.bias, self.bgrad
+        return self.weight, self.wgrad, self.v_weight, self.bias, self.bgrad, self.instances
 
 
 class Linear(BaseNetwork):
@@ -89,7 +90,7 @@ class Linear(BaseNetwork):
         self.bias = np.random.normal(loc=0.0, scale=std, size=[output_dim, 1])
         self.input, self.output = None, None
         self.wgrad, self.bgrad = np.zeros(self.weight.shape), np.zeros(self.bias.shape)
-        self.variable = Variable(self.weight, self.wgrad, self.bias, self.bgrad)
+        self.variable = Variable(self.weight, self.wgrad, self.bias, self.bgrad, instances=0)
     
     def parameters(self):
         return self.variable
@@ -103,6 +104,7 @@ class Linear(BaseNetwork):
     def backward(self, grad):
         self.bgrad += grad
         self.wgrad += np.dot(grad, self.input.T)
+        self.variable.instances += 1
         grad = np.dot(self.weight.T, grad)
         return grad
     
@@ -170,17 +172,17 @@ class Vanilla_GD:
     
     def step(self):
         for parameters in self.parameters:
-            parameters.weight += parameters.v_weight - self.lr * parameters.wgrad
-            parameters.bias -= self.lr * parameters.bgrad
+            parameters.weight -= self.lr * parameters.wgrad / parameters.instances
+            parameters.bias -= self.lr * parameters.bgrad / parameters.instances
 
 
 class Mynet(BaseNetwork):
     def __init__(self, input_dim, hidden_dim, std=0.1):
         super(Mynet, self).__init__()
         self.layers = Sequence(
-            Linear(input_dim, hidden_dim, std=0.1),
+            Linear(input_dim, hidden_dim, std=std),
             ReLU(),
-            Linear(hidden_dim, 1, std=0.1)
+            Linear(hidden_dim, 1, std=std)
         )
         self.criterion = MSE()
     
@@ -243,8 +245,8 @@ if __name__ == "__main__":
     test_dataset = data[:300]
     
     hidden_dim = 100
-    lr = 1e-6
-    epochs = 50
+    lr = 1e-2
+    epochs = 200
     model = Mynet(input_dim=2, hidden_dim=100)
     vanilla_model = model
     loss_func = model.criterion
